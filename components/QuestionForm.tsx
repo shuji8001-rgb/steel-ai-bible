@@ -26,6 +26,7 @@ import {
 import { SectionId, SECTIONS, QuestionQueueItem, KnowledgeRecord, WorkerSummary } from '@/types';
 import { findSimilarQuestions, SimilarMatchResult } from '@/lib/searchUtils';
 import { generateRefinedSteelData } from '@/lib/steelAiEngine';
+import { applySteelTerminology } from '@/lib/terminologyReplacer';
 
 interface QuestionFormProps {
   onQuestionAdded: (newQuestion: QuestionQueueItem, newKnowledge?: KnowledgeRecord) => void;
@@ -184,7 +185,10 @@ export const QuestionForm: React.FC<QuestionFormProps> = ({
           for (let i = 0; i < event.results.length; i++) {
             transcript += event.results[i][0].transcript;
           }
-          setRawText(baseTextBeforeRecordingRef.current + transcript);
+          const fullText = baseTextBeforeRecordingRef.current + transcript;
+          // 🎙️ 鉄骨専門用語辞書でリアルタイム補正！
+          const correctedText = applySteelTerminology(fullText);
+          setRawText(correctedText);
         };
 
         recognition.onerror = (e: any) => {
@@ -224,7 +228,10 @@ export const QuestionForm: React.FC<QuestionFormProps> = ({
   // 1. AIで具体化と仮解説を生成し、確認プレビューを表示
   const handleRefineAndPreview = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!rawText.trim() && imagePreviews.length === 0) return;
+    const cleanRawText = applySteelTerminology(rawText);
+    setRawText(cleanRawText);
+
+    if (!cleanRawText.trim() && imagePreviews.length === 0) return;
 
     if (isVoiceRecording && recognitionRef.current) {
       try {
@@ -453,6 +460,7 @@ export const QuestionForm: React.FC<QuestionFormProps> = ({
               <textarea
                 value={rawText}
                 onChange={(e) => setRawText(e.target.value)}
+                onBlur={() => setRawText(applySteelTerminology(rawText))}
                 placeholder="マイクで話すか殴り書き（例: 「32mmのガス切断で下側にノロがつく」「柱大梁接合部でUT波形が立った」）"
                 rows={2}
                 className={`w-full px-3 py-2 bg-slate-950/90 border rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 transition-all resize-none ${
