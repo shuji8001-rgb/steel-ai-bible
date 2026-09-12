@@ -50,15 +50,38 @@ export const WorkerSummaryView: React.FC<WorkerSummaryViewProps> = ({
   const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const synthIntervalRef = useRef<any>(null);
 
-  // 日本語ボイスを検索する関数
-  const getJapaneseVoice = () => {
+  // 自然で流暢な日本語ボイスを優先検索する関数
+  const getBestJapaneseVoice = () => {
     if (typeof window === 'undefined' || !window.speechSynthesis) return null;
     const voices = window.speechSynthesis.getVoices();
-    return (
-      voices.find((v) => v.lang === 'ja-JP' || v.lang === 'ja_JP' || v.lang.startsWith('ja')) ||
-      voices.find((v) => v.name.includes('Japanese') || v.name.includes('日本語') || v.name.includes('Nanami') || v.name.includes('Haruka') || v.name.includes('Kyoko') || v.name.includes('Otoya')) ||
-      null
+    if (!voices || voices.length === 0) return null;
+
+    const jaVoices = voices.filter(
+      (v) =>
+        v.lang === 'ja-JP' ||
+        v.lang === 'ja_JP' ||
+        v.lang.startsWith('ja') ||
+        v.name.includes('Japanese') ||
+        v.name.includes('日本語')
     );
+
+    if (jaVoices.length === 0) return null;
+
+    // 高品質なニューラル・自然音声（Google, Microsoft Natural, Apple Premium）を優先
+    const scoreVoice = (v: SpeechSynthesisVoice): number => {
+      let score = 0;
+      const name = v.name.toLowerCase();
+      if (name.includes('google') && (name.includes('日本語') || name.includes('ja'))) score += 100;
+      if (name.includes('natural') || name.includes('online')) score += 90;
+      if (name.includes('nanami')) score += 80;
+      if (name.includes('keita')) score += 75;
+      if (name.includes('haruka') || name.includes('ayumi') || name.includes('ichiro')) score += 70;
+      if (name.includes('kyoko') || name.includes('otoya') || name.includes('siri') || name.includes('premium')) score += 60;
+      return score;
+    };
+
+    jaVoices.sort((a, b) => scoreVoice(b) - scoreVoice(a));
+    return jaVoices[0];
   };
 
   // ボイスの非同期ロード対応
@@ -89,6 +112,49 @@ export const WorkerSummaryView: React.FC<WorkerSummaryViewProps> = ({
     };
   }, []);
 
+  // 自然で聞き取りやすいナレーション原稿を生成
+  const formatSpeechNarration = (q: QuestionQueueItem): string => {
+    const no = q.no;
+    const title = q.title
+      .replace(/[（\(].*?[）\)]/g, '')
+      .replace(/[【】「」『』［］\[\]]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    let verdictRaw = q.worker_summary?.verdict_ok_ng || '';
+    let verdictSpeech = '要確認です';
+    if (verdictRaw.includes('OK') || verdictRaw.includes('合格') || verdictRaw.includes('許容')) {
+      verdictSpeech = 'オーケー、許容範囲です';
+    } else if (verdictRaw.includes('危険') || verdictRaw.includes('停止')) {
+      verdictSpeech = '危険、作業を直ちに停止してください';
+    } else if (verdictRaw.includes('NG') || verdictRaw.includes('手直し')) {
+      verdictSpeech = 'エヌジー、手直しが必要です';
+    }
+
+    const cleanAction = (q.worker_summary?.immediate_action || '品質管理・職長に確認してください')
+      .replace(/[\r\n]+/g, '。')
+      .replace(/[・\-\*①②③④⑤■◆●]/g, '')
+      .replace(/[（\(].*?[）\)]/g, '')
+      .replace(/[：:]/g, '、')
+      .replace(/。+/g, '。')
+      .trim();
+
+    const cleanForbidden = (q.worker_summary?.forbidden_action || '')
+      .replace(/[\r\n]+/g, '。')
+      .replace(/[・\-\*①②③④⑤■◆●]/g, '')
+      .replace(/[（\(].*?[）\)]/g, '')
+      .replace(/[：:]/g, '、')
+      .replace(/。+/g, '。')
+      .trim();
+
+    let script = `${no}番、${title}。判定は、${verdictSpeech}。今すぐ行う処置は、${cleanAction}。`;
+    if (cleanForbidden && cleanForbidden !== '特になし' && !cleanForbidden.includes('なし')) {
+      script += `なお、絶対にやってはいけないNG行動は、${cleanForbidden}です。`;
+    }
+
+    return script;
+  };
+
   // 音声読み上げ
   const handleSpeakSummary = (q: QuestionQueueItem) => {
     if (typeof window === 'undefined' || !window.speechSynthesis) {
@@ -112,17 +178,13 @@ export const WorkerSummaryView: React.FC<WorkerSummaryViewProps> = ({
     }
     if (synthIntervalRef.current) clearInterval(synthIntervalRef.current);
 
-    const verdict = q.worker_summary?.verdict_ok_ng || '要確認';
-    const action = q.worker_summary?.immediate_action || '品管・職長に確認してください';
-    const forbidden = q.worker_summary?.forbidden_action || '特になし';
-
-    const text = `No.${q.no}、${q.title}。判定：${verdict}。今すぐやる処置：${action}。やってはいけないこと：${forbidden}`;
-    const uttr = new SpeechSynthesisUtterance(text);
+    const narrationText = formatSpeechNarration(q);
+    const uttr = new SpeechSynthesisUtterance(narrationText);
     uttr.lang = 'ja-JP';
-    uttr.rate = 1.0;
+    uttr.rate = 1.02; // 聞き取りやすく自然な速度
     uttr.pitch = 1.0;
 
-    const jaVoice = getJapaneseVoice();
+    const jaVoice = getBestJapaneseVoice();
     if (jaVoice) {
       uttr.voice = jaVoice;
     }
