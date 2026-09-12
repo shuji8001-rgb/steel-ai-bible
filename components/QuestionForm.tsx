@@ -61,10 +61,13 @@ export const QuestionForm: React.FC<QuestionFormProps> = ({
 
   const [mounted, setMounted] = useState(false);
   const recognitionRef = useRef<any>(null);
+  const isVoiceRecordingRef = useRef(false);
+  const baseTextBeforeRecordingRef = useRef('');
 
   useEffect(() => {
     setMounted(true);
     return () => {
+      isVoiceRecordingRef.current = false;
       if (recognitionRef.current) {
         try {
           recognitionRef.current.stop();
@@ -123,44 +126,44 @@ export const QuestionForm: React.FC<QuestionFormProps> = ({
     });
   };
 
-  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const filesArray = Array.from(e.target.files);
-      setImages((prev) => [...prev, ...filesArray]);
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
 
-      for (const file of filesArray) {
-        try {
-          const compressed = await compressImage(file);
-          setImagePreviews((prev) => [...prev, compressed]);
-        } catch (err) {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            setImagePreviews((prev) => [...prev, reader.result as string]);
-          };
-          reader.readAsDataURL(file);
-        }
+    for (const file of Array.from(files)) {
+      try {
+        const compressed = await compressImage(file);
+        setImagePreviews((prev) => [...prev, compressed]);
+      } catch (err) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          if (event.target?.result) {
+            setImagePreviews((prev) => [...prev, event.target!.result as string]);
+          }
+        };
+        reader.readAsDataURL(file);
       }
     }
   };
 
   const removeImage = (index: number) => {
-    setImages((prev) => prev.filter((_, i) => i !== index));
     setImagePreviews((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // 🎙️ 音声入力（マイク）のトグル
+  // 🎙️ 音声入力（マイク）のトグル（息継ぎ・無音でも途切れない自動継続機能付き）
   const toggleVoiceRecording = () => {
-    if (isVoiceRecording) {
+    if (isVoiceRecordingRef.current) {
+      isVoiceRecordingRef.current = false;
+      setIsVoiceRecording(false);
       if (recognitionRef.current) {
         try {
           recognitionRef.current.stop();
         } catch (e) {}
       }
-      setIsVoiceRecording(false);
     } else {
       setVoiceError(null);
       if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-        setVoiceError('ブラウザが音声認識に対応していません。Chrome推奨です。');
+        setVoiceError('ブラウザが音声認識に対応していません。Chrome / Edge推奨です。');
         return;
       }
 
@@ -172,26 +175,39 @@ export const QuestionForm: React.FC<QuestionFormProps> = ({
         recognition.continuous = true;
         recognition.interimResults = true;
 
-        const initialBaseText = rawText ? rawText + ' ' : '';
+        baseTextBeforeRecordingRef.current = rawText ? rawText.trim() + ' ' : '';
+        isVoiceRecordingRef.current = true;
+        setIsVoiceRecording(true);
 
         recognition.onresult = (event: any) => {
           let transcript = '';
-          for (let i = event.resultIndex; i < event.results.length; i++) {
+          for (let i = 0; i < event.results.length; i++) {
             transcript += event.results[i][0].transcript;
           }
-          setRawText(initialBaseText + transcript);
+          setRawText(baseTextBeforeRecordingRef.current + transcript);
         };
 
         recognition.onerror = (e: any) => {
           console.warn('Voice input error:', e);
-          if (e.error !== 'no-speech') {
-            setVoiceError('マイクアクセスが拒否されたかエラーが発生しました。');
+          if (e.error === 'no-speech' || e.error === 'aborted') {
+            return;
           }
-          setIsVoiceRecording(false);
+          if (e.error === 'not-allowed') {
+            setVoiceError('マイクアクセスが拒否されました。');
+            isVoiceRecordingRef.current = false;
+            setIsVoiceRecording(false);
+          }
         };
 
         recognition.onend = () => {
-          setIsVoiceRecording(false);
+          if (isVoiceRecordingRef.current) {
+            baseTextBeforeRecordingRef.current = rawText ? rawText.trim() + ' ' : '';
+            try {
+              recognition.start();
+            } catch (err) {}
+          } else {
+            setIsVoiceRecording(false);
+          }
         };
 
         recognition.start();
@@ -445,12 +461,32 @@ export const QuestionForm: React.FC<QuestionFormProps> = ({
                     : 'border-slate-700/80 focus:ring-amber-500'
                 }`}
               />
-              {isVoiceRecording && (
-                <div className="absolute right-2.5 top-2.5 flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-900/90 border border-red-500 text-[10px] text-red-200 animate-pulse">
-                  <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-ping" />
-                  <span>音声認識中...</span>
-                </div>
-              )}
+
+              {/* 右上操作群（録音中バッジ & ❌クリアボタン） */}
+              <div className="absolute right-2.5 top-2.5 flex items-center gap-1.5 z-10">
+                {isVoiceRecording && (
+                  <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-900/90 border border-red-500 text-[10px] text-red-200 animate-pulse shadow-sm">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-ping" />
+                    <span>録音中（息継ぎOK）</span>
+                  </div>
+                )}
+
+                {rawText && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRawText('');
+                      baseTextBeforeRecordingRef.current = '';
+                      setVoiceError(null);
+                    }}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-800/95 hover:bg-rose-900/90 border border-slate-700 hover:border-rose-500/60 text-slate-400 hover:text-rose-200 text-[10px] font-bold transition-all shadow-md active:scale-95 cursor-pointer"
+                    title="入力テキストを全削除して一からやり直す"
+                  >
+                    <X className="w-3 h-3 text-rose-400" />
+                    <span>クリア</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* 💡 類似質問・重複防止サジェスト表示 */}
