@@ -463,10 +463,10 @@ export const QuestionForm: React.FC<QuestionFormProps> = ({
               />
 
               {/* 右上操作群（録音中バッジ & ❌クリアボタン） */}
-              <div className="absolute right-2.5 top-2.5 flex items-center gap-1.5 z-10">
+              <div className="absolute right-2.5 top-2.5 flex items-center gap-1.5 z-20">
                 {isVoiceRecording && (
-                  <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-900/90 border border-red-500 text-[10px] text-red-200 animate-pulse shadow-sm">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-ping" />
+                  <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-600/95 border border-red-400 text-xs text-white font-bold animate-pulse shadow-md">
+                    <span className="w-2 h-2 rounded-full bg-white animate-ping" />
                     <span>録音中（息継ぎOK）</span>
                   </div>
                 )}
@@ -479,11 +479,11 @@ export const QuestionForm: React.FC<QuestionFormProps> = ({
                       baseTextBeforeRecordingRef.current = '';
                       setVoiceError(null);
                     }}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-800/95 hover:bg-rose-900/90 border border-slate-700 hover:border-rose-500/60 text-slate-400 hover:text-rose-200 text-[10px] font-bold transition-all shadow-md active:scale-95 cursor-pointer"
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-900/90 hover:bg-rose-600 border border-rose-500/80 text-rose-100 hover:text-white text-xs font-black transition-all shadow-lg active:scale-90 cursor-pointer"
                     title="入力テキストを全削除して一からやり直す"
                   >
-                    <X className="w-3 h-3 text-rose-400" />
-                    <span>クリア</span>
+                    <X className="w-3.5 h-3.5 stroke-[3] text-rose-300 group-hover:text-white" />
+                    <span>× 全消去</span>
                   </button>
                 )}
               </div>

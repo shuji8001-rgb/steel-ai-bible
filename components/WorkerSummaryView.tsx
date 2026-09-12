@@ -159,21 +159,16 @@ export const WorkerSummaryView: React.FC<WorkerSummaryViewProps> = ({
       }
     }, 4000);
 
-    // cancel直後のspeakが一部ブラウザで無視される問題の対策（50ms遅延）
-    setTimeout(() => {
-      try {
-        if (window.speechSynthesis.paused) {
-          window.speechSynthesis.resume();
-        }
-        window.speechSynthesis.speak(uttr);
-        if (window.speechSynthesis.paused) {
-          window.speechSynthesis.resume();
-        }
-      } catch (err) {
-        console.error('speak failed:', err);
-        setSpeakingId(null);
+    // ユーザー操作の同期的コンテキスト内で直接speakを実行（ブラウザのautoplayブロック回避）
+    try {
+      window.speechSynthesis.speak(uttr);
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
       }
-    }, 50);
+    } catch (err) {
+      console.error('speak failed:', err);
+      setSpeakingId(null);
+    }
   };
 
   // 🎙️ 音声で質問・ハンズフリー即断の開始
