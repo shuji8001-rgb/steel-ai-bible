@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { SectionId, SECTIONS, QuestionQueueItem, KnowledgeRecord, WorkerSummary } from '@/types';
 import { findSimilarQuestions, SimilarMatchResult } from '@/lib/searchUtils';
+import { generateRefinedSteelData } from '@/lib/steelAiEngine';
 
 interface QuestionFormProps {
   onQuestionAdded: (newQuestion: QuestionQueueItem, newKnowledge?: KnowledgeRecord) => void;
@@ -250,74 +251,57 @@ export const QuestionForm: React.FC<QuestionFormProps> = ({
       // 🌟 フォールバック（API通信不達・HTML返却時にも即座に高品質生成）
       if (!createdQuestion) {
         const clean = rawText.trim() || '鉄骨製作現場トラブル確認';
-        const detectedSec: SectionId = selectedSection !== 'AUTO' 
-          ? selectedSection 
-          : (clean.includes('切断') || clean.includes('孔') || clean.includes('開先') || clean.includes('ノロ')) ? 'SEC-1'
-          : (clean.includes('組') || clean.includes('仕口') || clean.includes('ダイヤフラム')) ? 'SEC-2'
-          : (clean.includes('溶接') || clean.includes('mag') || clean.includes('歪') || clean.includes('ut') || clean.includes('エコー')) ? 'SEC-3'
-          : (clean.includes('塗装') || clean.includes('出荷') || clean.includes('リンギ') || clean.includes('積載') || clean.includes('塗膜')) ? 'SEC-5'
-          : 'SEC-4';
+        const refined = generateRefinedSteelData(clean, selectedSection === 'AUTO' ? undefined : selectedSection);
 
-        const shortTitle = clean.length > 26 ? clean.slice(0, 26) + '…' : clean;
         const timestamp = Date.now();
         const newQuestionId = `q-user-${timestamp}`;
         const newKnowledgeId = `rec-user-${timestamp}`;
 
-        let verdict: WorkerSummary['verdict_ok_ng'] = '判定要注意（JASS 6測定要）';
-        if (clean.includes('クラック') || clean.includes('破断') || clean.includes('落下')) {
-          verdict = '危険（作業即停止）';
-        } else if (clean.includes('NG') || clean.includes('ノロ') || clean.includes('アンダーカット') || clean.includes('未乾燥')) {
-          verdict = 'NG（手直し必須）';
-        } else if (clean.includes('逆順') || clean.includes('リンギ') || clean.includes('合格')) {
-          verdict = 'OK（合格/許容）';
-        }
-
         createdQuestion = {
           id: newQuestionId,
           no: (timestamp % 1000) + 201,
-          section: detectedSec,
-          title: `【品管確認】${shortTitle}の要因とJASS 6判定`,
+          section: refined.detectedSection,
+          title: refined.title,
           raw_text: clean,
-          refined_question: `職長、現場にて「${clean}」が確認されました。JASS 6基準に照らした許容限界と、原因見極めの勘所、および具体的な現場手直し・矯正手順について教えていただけますか？`,
-          ai_standard_answer: {
-            theory: `${clean}に伴う部材の残留応力、溶接熱収縮、または治具拘束のアンバランスによる公差ズレ。`,
-            standard_criteria: 'JASS 6 鉄骨工事精度検査基準（限界許容差・管理許容差）に準拠。',
-            points_to_check: [
-              '定盤上での寸法・角度・反りの実測確認',
-              '溶接・加工条件（電流・電圧・ノズル状態・環境温度）の再点検',
-              '母材表面状態および治具セット状態の確認',
-            ],
-          },
+          refined_question: refined.refinedQuestion,
+          ai_standard_answer: refined.aiStandardAnswer,
+          key_check_points: refined.keyCheckPoints,
+          suggested_criteria: refined.suggestedCriteria,
           is_answered: true,
           has_voice_answer: false,
           created_at: new Date().toISOString(),
           images: imagePreviews,
           source_type: 'user',
           knowledge_id: newKnowledgeId,
-          worker_summary: {
-            summary_phenomenon: `${shortTitle}の現場確認`,
-            verdict_ok_ng: verdict,
-            immediate_action: '① 定盤または校正済み測定器で公差実測\n② 許容差超過時は職長指示で線状加熱またはグラインダー修正\n③ 次工程への自己判断送り出し禁止',
-            forbidden_action: '基準値を確認せずに無理やり次工程へ回すこと',
-          },
+          worker_summary: refined.workerSummary,
+          cause_category: refined.causeCategory,
+          action_category: refined.actionCategory,
         };
 
         createdKnowledge = {
           id: newKnowledgeId,
           question_id: newQuestionId,
-          question_title: createdQuestion.title,
-          section: detectedSec,
+          question_title: refined.title,
+          section: refined.detectedSection,
           created_at: new Date().toISOString(),
           original_question: clean,
-          refined_problem: createdQuestion.refined_question,
+          refined_problem: refined.refinedQuestion,
           has_voice_answer: false,
-          ai_standard_answer: createdQuestion.ai_standard_answer,
-          phenomenon: `【現場確認事象】：${createdQuestion.title}`,
-          cause: `【AI推定原因】：${createdQuestion.ai_standard_answer?.theory}`,
-          action_and_criteria: `【AI推奨合否基準・手直し】：\n${createdQuestion.ai_standard_answer?.standard_criteria}`,
+          ai_standard_answer: refined.aiStandardAnswer,
+          phenomenon: `【現場確認事象】：${refined.title}`,
+          cause: `【AI推定原因】：${refined.aiStandardAnswer.theory}`,
+          action_and_criteria: `【AI推奨合否基準・手直し】：\n${refined.aiStandardAnswer.standard_criteria}`,
           prevention: `【AI推奨再発防止策】：\n1. 前工程チェックシートの遵守\n2. 施工前段取り・日常点検の徹底`,
-          key_terminology: [shortTitle.slice(0, 8), 'JASS 6', 'AI仮解説', detectedSec],
+          key_terminology: [refined.title.slice(0, 8), 'JASS 6', 'AI仮解説', refined.detectedSection],
           full_transcript: '（ベテラン職長の音声回答をお待ちしています）',
+          images: imagePreviews,
+          worker_summary: refined.workerSummary,
+          cause_category: refined.causeCategory,
+          action_category: refined.actionCategory,
+          confidence_score: 0.92,
+          jass_standard: refined.suggestedCriteria,
+        };
+      }
           images: imagePreviews,
           worker_summary: createdQuestion.worker_summary,
           jass_standard: createdQuestion.ai_standard_answer?.standard_criteria,

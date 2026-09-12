@@ -4,6 +4,8 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { STEEL_TERMINOLOGY_PROMPT } from '@/constants/terminology';
 import { SectionId, QuestionQueueItem, KnowledgeRecord, AiStandardAnswer, WorkerSummary } from '@/types';
 
+import { generateRefinedSteelData } from '@/lib/steelAiEngine';
+
 export async function POST(req: NextRequest) {
   try {
     const { rawText, section, rawQuestion, images } = await req.json();
@@ -67,11 +69,8 @@ ${STEEL_TERMINOLOGY_PROMPT}
 `;
           const result = await model.generateContent(prompt);
           const responseText = result.response.text().trim();
-          const cleanedJson = responseText
-            .replace(/^```json\s*/i, '')
-            .replace(/^```\s*/i, '')
-            .replace(/\s*```$/i, '')
-            .trim();
+          const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+          const cleanedJson = jsonMatch ? jsonMatch[0] : responseText;
           const parsed = JSON.parse(cleanedJson);
 
           const detectedSec = (parsed.detectedSection as SectionId) || section || 'SEC-3';
@@ -100,71 +99,14 @@ ${STEEL_TERMINOLOGY_PROMPT}
             actionCategory: parsed.actionCategory || '線状加熱・油圧矯正',
           };
         } catch (geminiErr) {
-          console.warn('Gemini API call failed in refine-question, fallback:', geminiErr);
+          console.warn('Gemini API call failed in refine-question, fallback to dynamic steel engine:', geminiErr);
         }
       }
     }
 
-    // 2. フォールバック（スマート自動生成）
+    // 2. 高精度ドメイン推論エンジンによる動的フォールバック
     if (!refinedData) {
-      const clean = (inputQuestion || '鉄骨製作トラブル相談').trim();
-      const detectedSec = (section || determineSection(clean)) as SectionId;
-      const shortTitle = clean.length > 26 ? clean.slice(0, 26) + '…' : clean;
-
-      let verdict: WorkerSummary['verdict_ok_ng'] = '判定要注意（JASS 6測定要）';
-      let causeCat = '入熱過大・溶接欠陥';
-      let actionCat = '線状加熱・油圧矯正';
-
-      if (detectedSec === 'SEC-1') {
-        causeCat = '切断・開先不良';
-        actionCat = 'グラインダー・再切断';
-        verdict = clean.includes('ノロ') || clean.includes('開先') ? 'NG（手直し必須）' : '判定要注意（JASS 6測定要）';
-      } else if (detectedSec === 'SEC-2') {
-        causeCat = '組立・拘束不足';
-        actionCat = '治具修正・仮止め補強';
-        verdict = clean.includes('倒れ') || clean.includes('クリアランス') ? 'NG（手直し必須）' : '判定要注意（JASS 6測定要）';
-      } else if (detectedSec === 'SEC-3') {
-        causeCat = '入熱過大・溶接欠陥';
-        actionCat = '線状加熱・油圧矯正';
-        verdict = clean.includes('クラック') || clean.includes('UT') ? '危険（作業即停止）' : 'NG（手直し必須）';
-      } else if (detectedSec === 'SEC-4') {
-        causeCat = '寸法公差・UTエコー';
-        actionCat = 'JASS6再測定';
-        verdict = '判定要注意（JASS 6測定要）';
-      } else if (detectedSec === 'SEC-5') {
-        causeCat = '塗装膜厚・養生不良';
-        actionCat = 'ケレン・再塗装';
-        verdict = clean.includes('リンギ') || clean.includes('逆順') ? 'OK（合格/許容）' : 'NG（手直し必須）';
-      }
-
-      const aiAnswer: AiStandardAnswer = {
-        theory: `${clean}に伴う部材の残留応力、溶接熱収縮、または治具拘束のアンバランスによる公差ズレ。`,
-        standard_criteria: 'JASS 6 鉄骨工事精度検査基準（限界許容差・管理許容差）に準拠。',
-        points_to_check: [
-          '定盤上での寸法・角度・反りの三次元測定',
-          '溶接条件（電流・電圧・入熱量・パス間温度）の確認',
-          '母材開先形状および裏当て金密着度の点検',
-        ],
-      };
-
-      const workerSummary: WorkerSummary = {
-        summary_phenomenon: `${shortTitle}の現場確認`,
-        verdict_ok_ng: verdict,
-        immediate_action: '① 定盤上で公差実測\n② 許容差超過時は職長指示で線状加熱またはグラインダー修正\n③ 次工程への自己判断送り出し禁止',
-        forbidden_action: '基準値を超えたまま無理やりボルト締めや次工程へ回すこと',
-      };
-
-      refinedData = {
-        title: `【品管確認】${shortTitle}の要因とJASS 6判定`,
-        refinedQuestion: `職長、現場にて「${clean}」が確認されました。JASS 6基準に照らした許容限界と、原因見極めの勘所、および具体的な現場手直し・矯正手順について教えていただけますか？`,
-        detectedSection: detectedSec,
-        aiStandardAnswer: aiAnswer,
-        keyCheckPoints: aiAnswer.points_to_check,
-        suggestedCriteria: aiAnswer.standard_criteria,
-        workerSummary: workerSummary,
-        causeCategory: causeCat,
-        actionCategory: actionCat,
-      };
+      refinedData = generateRefinedSteelData(inputQuestion, section);
     }
 
     const timestamp = Date.now();
