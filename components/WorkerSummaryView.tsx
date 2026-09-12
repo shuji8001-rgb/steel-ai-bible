@@ -47,6 +47,31 @@ export const WorkerSummaryView: React.FC<WorkerSummaryViewProps> = ({
   const [highlightedCardId, setHighlightedCardId] = useState<string | null>(null);
 
   const recognitionRef = useRef<any>(null);
+  const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const synthIntervalRef = useRef<any>(null);
+
+  // 日本語ボイスを検索する関数
+  const getJapaneseVoice = () => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return null;
+    const voices = window.speechSynthesis.getVoices();
+    return (
+      voices.find((v) => v.lang === 'ja-JP' || v.lang === 'ja_JP' || v.lang.startsWith('ja')) ||
+      voices.find((v) => v.name.includes('Japanese') || v.name.includes('日本語') || v.name.includes('Nanami') || v.name.includes('Haruka') || v.name.includes('Kyoko') || v.name.includes('Otoya')) ||
+      null
+    );
+  };
+
+  // ボイスの非同期ロード対応
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.getVoices();
+      if (typeof window.speechSynthesis.onvoiceschanged !== 'undefined') {
+        window.speechSynthesis.onvoiceschanged = () => {
+          window.speechSynthesis.getVoices();
+        };
+      }
+    }
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -54,6 +79,9 @@ export const WorkerSummaryView: React.FC<WorkerSummaryViewProps> = ({
         try {
           recognitionRef.current.stop();
         } catch (e) {}
+      }
+      if (synthIntervalRef.current) {
+        clearInterval(synthIntervalRef.current);
       }
       if (typeof window !== 'undefined' && window.speechSynthesis) {
         window.speechSynthesis.cancel();
@@ -63,29 +91,89 @@ export const WorkerSummaryView: React.FC<WorkerSummaryViewProps> = ({
 
   // 音声読み上げ
   const handleSpeakSummary = (q: QuestionQueueItem) => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) return;
-
-    if (speakingId === q.id) {
-      window.speechSynthesis.cancel();
-      setSpeakingId(null);
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
+      alert('お使いのブラウザは音声読み上げに対応していません。');
       return;
     }
 
+    // すでに同じカードを再生中の場合は停止
+    if (speakingId === q.id) {
+      window.speechSynthesis.cancel();
+      if (synthIntervalRef.current) clearInterval(synthIntervalRef.current);
+      setSpeakingId(null);
+      currentUtteranceRef.current = null;
+      return;
+    }
+
+    // いったん停止＆キュー詰まり解除
     window.speechSynthesis.cancel();
+    if (window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
+    }
+    if (synthIntervalRef.current) clearInterval(synthIntervalRef.current);
+
     const verdict = q.worker_summary?.verdict_ok_ng || '要確認';
     const action = q.worker_summary?.immediate_action || '品管・職長に確認してください';
-    const forbidden = q.worker_summary?.forbidden_action || '';
+    const forbidden = q.worker_summary?.forbidden_action || '特になし';
 
-    const text = `番号${q.no}番、${q.title}。判定は、${verdict}。今すぐやる処置、${action}。やってはいけないこと、${forbidden}`;
+    const text = `No.${q.no}、${q.title}。判定：${verdict}。今すぐやる処置：${action}。やってはいけないこと：${forbidden}`;
     const uttr = new SpeechSynthesisUtterance(text);
     uttr.lang = 'ja-JP';
-    uttr.rate = 1.05;
+    uttr.rate = 1.0;
+    uttr.pitch = 1.0;
 
-    uttr.onend = () => setSpeakingId(null);
-    uttr.onerror = () => setSpeakingId(null);
+    const jaVoice = getJapaneseVoice();
+    if (jaVoice) {
+      uttr.voice = jaVoice;
+    }
+
+    // GC対策: refに保持
+    currentUtteranceRef.current = uttr;
+
+    uttr.onstart = () => {
+      setSpeakingId(q.id);
+    };
+
+    uttr.onend = () => {
+      setSpeakingId(null);
+      currentUtteranceRef.current = null;
+      if (synthIntervalRef.current) clearInterval(synthIntervalRef.current);
+    };
+
+    uttr.onerror = (e) => {
+      console.warn('SpeechSynthesis error:', e);
+      setSpeakingId(null);
+      currentUtteranceRef.current = null;
+      if (synthIntervalRef.current) clearInterval(synthIntervalRef.current);
+    };
 
     setSpeakingId(q.id);
-    window.speechSynthesis.speak(uttr);
+
+    // Chromeの15秒フリーズバグ対策（定期的にresumeを実行）
+    synthIntervalRef.current = setInterval(() => {
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+          window.speechSynthesis.pause();
+          window.speechSynthesis.resume();
+        }
+      }
+    }, 4000);
+
+    // cancel直後のspeakが一部ブラウザで無視される問題の対策（50ms遅延）
+    setTimeout(() => {
+      try {
+        if (window.speechSynthesis.paused) {
+          window.speechSynthesis.resume();
+        }
+        window.speechSynthesis.speak(uttr);
+        if (window.speechSynthesis.paused) {
+          window.speechSynthesis.resume();
+        }
+      } catch (err) {
+        console.error('speak failed:', err);
+        setSpeakingId(null);
+      }
+    }, 50);
   };
 
   // 🎙️ 音声で質問・ハンズフリー即断の開始
