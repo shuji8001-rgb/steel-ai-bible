@@ -1,6 +1,4 @@
-'use client';
-
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Building2, 
   Flame, 
@@ -12,9 +10,11 @@ import {
   ShieldCheck,
   CheckCircle2,
   Sparkles,
-  Users
+  Users,
+  Settings,
 } from 'lucide-react';
 import { SectionId, SECTIONS, MainViewMode } from '@/types';
+import { AiSettingsModal } from '@/components/AiSettingsModal';
 
 interface HeaderProps {
   totalQuestions: number;
@@ -37,6 +37,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenManual,
   onResetData,
 }) => {
+  const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false);
   const percent = totalQuestions > 0 ? Math.round((answeredCount / totalQuestions) * 100) : 0;
 
   return (
@@ -124,6 +125,16 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             </div>
 
+            {/* AI設定ボタン */}
+            <button
+              onClick={() => setIsAiSettingsOpen(true)}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-amber-300 text-xs font-semibold transition-all shadow-sm"
+              title="Gemini 1.5 Pro / 2.0 Flash / APIキー設定"
+            >
+              <Settings className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">AI設定</span>
+            </button>
+
             {/* マニュアルボタン */}
             <button
               onClick={() => onOpenManual('ENGINEER')}
@@ -182,5 +193,12 @@ export const Header: React.FC<HeaderProps> = ({
 
       </div>
     </header>
+
+    {/* AI知能モデル＆API設定モーダル */}
+    <AiSettingsModal
+      isOpen={isAiSettingsOpen}
+      onClose={() => setIsAiSettingsOpen(false)}
+    />
+    </>
   );
 };

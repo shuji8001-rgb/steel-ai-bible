@@ -1,14 +1,29 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-const apiKey = process.env.GEMINI_API_KEY || '';
+const serverApiKey = process.env.GEMINI_API_KEY || '';
 
-export const isGeminiConfigured = Boolean(apiKey && apiKey.length > 5);
+export const isGeminiConfigured = Boolean(serverApiKey && serverApiKey.length > 5);
 
-export const genAI = isGeminiConfigured ? new GoogleGenerativeAI(apiKey) : null;
+export function getGeminiClient(customApiKey?: string) {
+  const key = customApiKey || serverApiKey;
+  if (!key) return null;
+  return new GoogleGenerativeAI(key);
+}
 
-export const getGeminiModel = (modelName: string = 'gemini-1.5-flash') => {
-  if (!genAI) {
+export const getGeminiModel = (
+  modelName: string = 'gemini-1.5-pro',
+  customApiKey?: string
+) => {
+  const client = getGeminiClient(customApiKey);
+  if (!client) {
     return null;
   }
-  return genAI.getGenerativeModel({ model: modelName });
+  return client.getGenerativeModel({
+    model: modelName,
+    generationConfig: {
+      temperature: 0.15,
+      responseMimeType: 'application/json',
+    },
+  });
 };
+

@@ -8,7 +8,7 @@ import { generateRefinedSteelData } from '@/lib/steelAiEngine';
 
 export async function POST(req: NextRequest) {
   try {
-    const { rawText, section, rawQuestion, images } = await req.json();
+    const { rawText, section, rawQuestion, images, customApiKey, modelName } = await req.json();
     const inputQuestion = rawText || rawQuestion;
 
     if (!inputQuestion && (!images || images.length === 0)) {
@@ -30,16 +30,20 @@ export async function POST(req: NextRequest) {
       actionCategory: string;
     } | null = null;
 
-    // 1. Gemini 1.5 Flash による質問具体化 ＆ AI標準仮解説 ＆ 現場要約の自動生成
-    if (isGeminiConfigured) {
-      const model = getGeminiModel('gemini-1.5-flash');
-      if (model) {
-        try {
-          const prompt = `
+    // 1. 最上位Geminiモデル（Gemini 1.5 Pro / 2.0 Flash）による質問具体化 ＆ 仮解説自動生成
+    const modelsToTry = [modelName || 'gemini-1.5-pro', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+
+    for (const mName of modelsToTry) {
+      if (refinedData) break;
+      const model = getGeminiModel(mName, customApiKey);
+      if (!model) continue;
+
+      try {
+        const prompt = `
 ${STEEL_TERMINOLOGY_PROMPT}
 
 【タスク】
-建築鉄骨製作工場（ファブリケーター）の現場技術者・品管担当者が現場から入力した「殴り書きメモ・トラブル相談」を受け取り、以下の全項目を構造化して生成してください：
+建築鉄骨製作工場（ファブリケーター）の現場技術者・品管担当者が現場から入力した「殴り書きメモ・トラブル相談」を受け取り、以下の全項目を構造化して最高水準の建築工学・溶接冶金学的見地から生成してください：
 1. ベテラン職長が即座に直感で口頭回答しやすい具体的・論理的な技術インタビュー文へのリライト（「職長、〜について教えていただけますか？」形式）
 2. 建築鉄骨精度検査基準・JASS 6に基づく、AIによる標準理論・メカニズム・合否判定ライン・現場確認ポイントの【仮解説】
 3. 現場作業員向けの即断要約（OK/NG判定・今すぐやる処置・絶対やってはいけないNG行動）
@@ -67,40 +71,39 @@ ${STEEL_TERMINOLOGY_PROMPT}
   "actionCategory": "線状加熱・油圧矯正" | "グラインダー・再溶接" | "治具修正・仮止め補強" | "JASS6再測定" | "ケレン・再塗装"
 }
 `;
-          const result = await model.generateContent(prompt);
-          const responseText = result.response.text().trim();
-          const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-          const cleanedJson = jsonMatch ? jsonMatch[0] : responseText;
-          const parsed = JSON.parse(cleanedJson);
+        const result = await model.generateContent(prompt);
+        const responseText = result.response.text().trim();
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        const cleanedJson = jsonMatch ? jsonMatch[0] : responseText;
+        const parsed = JSON.parse(cleanedJson);
 
-          const detectedSec = (parsed.detectedSection as SectionId) || section || 'SEC-3';
-          const aiAnswer: AiStandardAnswer = {
-            theory: parsed.aiTheory || '熱影響および幾何学的拘束条件による部材変形・組織変化。',
-            standard_criteria: parsed.standardCriteria || 'JASS 6 鉄骨精度検査基準・管理許容差に準拠。',
-            points_to_check: parsed.keyCheckPoints || ['定盤上での寸法測定', '溶接条件・外観の確認'],
-          };
+        const detectedSec = (parsed.detectedSection as SectionId) || section || 'SEC-3';
+        const aiAnswer: AiStandardAnswer = {
+          theory: parsed.aiTheory || '熱影響および幾何学的拘束条件による部材変形・組織変化。',
+          standard_criteria: parsed.standardCriteria || 'JASS 6 鉄骨精度検査基準・管理許容差に準拠。',
+          points_to_check: parsed.keyCheckPoints || ['定盤上での寸法測定', '溶接条件・外観の確認'],
+        };
 
-          const workerSummary: WorkerSummary = {
-            summary_phenomenon: parsed.summaryPhenomenon || parsed.title || '現場確認事象',
-            verdict_ok_ng: parsed.verdictOkNg || '判定要注意（JASS 6測定要）',
-            immediate_action: parsed.immediateAction || '測定器で公差を確認し、職長に指示を仰いでください。',
-            forbidden_action: parsed.forbiddenAction || '自己判断で無理に次工程へ部材を回すこと。',
-          };
+        const workerSummary: WorkerSummary = {
+          summary_phenomenon: parsed.summaryPhenomenon || parsed.title || '現場確認事象',
+          verdict_ok_ng: parsed.verdictOkNg || '判定要注意（JASS 6測定要）',
+          immediate_action: parsed.immediateAction || '測定器で公差を確認し、職長に指示を仰いでください。',
+          forbidden_action: parsed.forbiddenAction || '自己判断で無理に次工程へ部材を回すこと。',
+        };
 
-          refinedData = {
-            title: parsed.title,
-            refinedQuestion: parsed.refinedQuestion,
-            detectedSection: detectedSec,
-            aiStandardAnswer: aiAnswer,
-            keyCheckPoints: parsed.keyCheckPoints || [],
-            suggestedCriteria: parsed.standardCriteria || '',
-            workerSummary: workerSummary,
-            causeCategory: parsed.causeCategory || '入熱過大・溶接欠陥',
-            actionCategory: parsed.actionCategory || '線状加熱・油圧矯正',
-          };
-        } catch (geminiErr) {
-          console.warn('Gemini API call failed in refine-question, fallback to dynamic steel engine:', geminiErr);
-        }
+        refinedData = {
+          title: parsed.title,
+          refinedQuestion: parsed.refinedQuestion,
+          detectedSection: detectedSec,
+          aiStandardAnswer: aiAnswer,
+          keyCheckPoints: parsed.keyCheckPoints || [],
+          suggestedCriteria: parsed.standardCriteria || '',
+          workerSummary: workerSummary,
+          causeCategory: parsed.causeCategory || '入熱過大・溶接欠陥',
+          actionCategory: parsed.actionCategory || '線状加熱・油圧矯正',
+        };
+      } catch (geminiErr) {
+        console.warn(`Gemini API call failed in 鉄骨バイブル with ${mName}:`, geminiErr);
       }
     }
 
