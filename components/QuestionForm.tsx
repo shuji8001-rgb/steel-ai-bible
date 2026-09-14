@@ -330,11 +330,6 @@ export const QuestionForm: React.FC<QuestionFormProps> = ({
           jass_standard: refined.suggestedCriteria,
         };
       }
-          images: imagePreviews,
-          worker_summary: createdQuestion.worker_summary,
-          jass_standard: createdQuestion.ai_standard_answer?.standard_criteria,
-        };
-      }
 
       // プレビューモーダルをセット
       setPreviewData({
@@ -615,7 +610,7 @@ export const QuestionForm: React.FC<QuestionFormProps> = ({
                   type="file"
                   accept="image/*"
                   multiple
-                  onChange={handleImageChange}
+                  onChange={handleImageUpload}
                   className="hidden"
                 />
               </label>

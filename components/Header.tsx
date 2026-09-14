@@ -12,9 +12,11 @@ import {
   Sparkles,
   Users,
   Settings,
+  QrCode,
 } from 'lucide-react';
 import { SectionId, SECTIONS, MainViewMode } from '@/types';
 import { AiSettingsModal } from '@/components/AiSettingsModal';
+import { QrModal } from '@/components/QrModal';
 
 interface HeaderProps {
   totalQuestions: number;
@@ -38,9 +40,11 @@ export const Header: React.FC<HeaderProps> = ({
   onResetData,
 }) => {
   const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false);
+  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const percent = totalQuestions > 0 ? Math.round((answeredCount / totalQuestions) * 100) : 0;
 
   return (
+    <>
     <header className="sticky top-0 z-40 bg-slate-950/95 backdrop-blur-md border-b border-slate-800 shadow-2xl">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5">
         
@@ -125,6 +129,16 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             </div>
 
+            {/* 📱 QR表示ボタン（PC・タブレット表示 / スマホ非表示） */}
+            <button
+              onClick={() => setIsQrModalOpen(true)}
+              className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/25 to-orange-500/25 hover:from-amber-500/40 hover:to-orange-500/40 border border-amber-500/50 text-amber-300 text-xs font-bold transition-all shadow-md shadow-black/40 active:scale-95"
+              title="スマホ連携用 QRコードを表示"
+            >
+              <QrCode className="w-3.5 h-3.5 text-amber-400" />
+              <span>QR表示</span>
+            </button>
+
             {/* AI設定ボタン */}
             <button
               onClick={() => setIsAiSettingsOpen(true)}
@@ -193,6 +207,14 @@ export const Header: React.FC<HeaderProps> = ({
 
       </div>
     </header>
+
+    {/* 📱 スマホ連携用 QRコードモーダル */}
+    <QrModal
+      isOpen={isQrModalOpen}
+      onClose={() => setIsQrModalOpen(false)}
+      title="鉄骨技術伝承AIバイブル"
+      defaultUrl="https://steel-tech-bible.vercel.app/"
+    />
 
     {/* AI知能モデル＆API設定モーダル */}
     <AiSettingsModal
