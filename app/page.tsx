@@ -37,7 +37,7 @@ export default function Home() {
   // モーダルステート
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [isManualOpen, setIsManualOpen] = useState(false);
-  const [manualPersona, setManualPersona] = useState<ManualPersona>('ENGINEER');
+  const [manualPersona, setManualPersona] = useState<ManualPersona>('FUJITA');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingKnowledgeRecord, setEditingKnowledgeRecord] = useState<KnowledgeRecord | null>(null);
   const [editingQuestionItem, setEditingQuestionItem] = useState<QuestionQueueItem | null>(null);
@@ -65,7 +65,7 @@ export default function Home() {
   }, []);
 
   // マニュアルを開くハンドラー
-  const handleOpenManual = (persona: ManualPersona = 'ENGINEER') => {
+  const handleOpenManual = (persona: ManualPersona = 'FUJITA') => {
     setManualPersona(persona);
     setIsManualOpen(true);
   };
@@ -295,7 +295,7 @@ export default function Home() {
                   questions={questions}
                   knowledgeList={records}
                   onSelectQuestion={handleSelectQuestion}
-                  onOpenManual={() => handleOpenManual('ENGINEER')}
+                  onOpenManual={() => handleOpenManual('FUJITA')}
                 />
               </div>
 
@@ -339,7 +339,7 @@ export default function Home() {
             questions={questions}
             knowledgeList={records}
             onSelectQuestionForDetails={handleSelectQuestion}
-            onOpenManual={() => handleOpenManual('QC')}
+            onOpenManual={() => handleOpenManual('ADMIN')}
           />
         )}
 
@@ -370,7 +370,7 @@ export default function Home() {
       <ManualModal
         isOpen={isManualOpen}
         onClose={() => setIsManualOpen(false)}
-        defaultPersona={manualPersona}
+        initialPersona={manualPersona}
       />
 
       {/* フッター */}

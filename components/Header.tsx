@@ -25,7 +25,7 @@ interface HeaderProps {
   onSelectSection: (section: string | null) => void;
   activeView: MainViewMode;
   onChangeView: (view: MainViewMode) => void;
-  onOpenManual: (persona?: 'ENGINEER' | 'FOREMAN' | 'QC') => void;
+  onOpenManual: (persona?: 'FUJITA' | 'OTAKI' | 'ADMIN' | 'WORKER') => void;
   onResetData: () => void;
 }
 
@@ -151,7 +151,7 @@ export const Header: React.FC<HeaderProps> = ({
 
             {/* マニュアルボタン */}
             <button
-              onClick={() => onOpenManual('ENGINEER')}
+              onClick={() => onOpenManual('FUJITA')}
               className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-amber-300 text-xs font-semibold transition-all shadow-sm"
               title="運用マニュアル"
             >
